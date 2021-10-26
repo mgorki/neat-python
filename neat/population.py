@@ -1,8 +1,9 @@
 """Implements the core evolution algorithm."""
 from __future__ import print_function
 
-from neat.math_util import mean
 from neat.reporting import ReporterSet
+from neat.math_util import mean
+from neat.six_util import iteritems, itervalues
 
 
 class CompleteExtinctionException(Exception):
@@ -55,7 +56,7 @@ class Population(object):
     def remove_reporter(self, reporter):
         self.reporters.remove(reporter)
 
-    def run(self, fitness_function, n=None):
+    def run(self, fitness_function, n=None, track_best_genome=False):
         """
         Runs NEAT's genetic algorithm for at most n generations.  If n
         is None, run until solution is found or extinction occurs.
@@ -78,6 +79,7 @@ class Population(object):
         if self.config.no_fitness_termination and (n is None):
             raise RuntimeError("Cannot have no generational limit with no fitness termination")
 
+        self.list_best_genome_evolving = []
         k = 0
         while n is None or k < n:
             k += 1
@@ -85,14 +87,11 @@ class Population(object):
             self.reporters.start_generation(self.generation)
 
             # Evaluate all genomes using the user-provided function.
-            fitness_function(list(self.population.items()), self.config)
+            fitness_function(list(iteritems(self.population)), self.config)
 
             # Gather and report statistics.
             best = None
-            for g in self.population.values():
-                if g.fitness is None:
-                    raise RuntimeError("Fitness not assigned to genome {}".format(g.key))
-
+            for g in itervalues(self.population):
                 if best is None or g.fitness > best.fitness:
                     best = g
             self.reporters.post_evaluate(self.config, self.population, self.species, best)
@@ -100,10 +99,11 @@ class Population(object):
             # Track the best genome ever seen.
             if self.best_genome is None or best.fitness > self.best_genome.fitness:
                 self.best_genome = best
+                self.list_best_genome_evolving.append(best)
 
             if not self.config.no_fitness_termination:
                 # End if the fitness threshold is reached.
-                fv = self.fitness_criterion(g.fitness for g in self.population.values())
+                fv = self.fitness_criterion(g.fitness for g in itervalues(self.population))
                 if fv >= self.config.fitness_threshold:
                     self.reporters.found_solution(self.config, self.generation, best)
                     break
@@ -135,4 +135,4 @@ class Population(object):
         if self.config.no_fitness_termination:
             self.reporters.found_solution(self.config, self.generation, self.best_genome)
 
-        return self.best_genome
+        return self.best_genome, self.list_best_genome_evolving
