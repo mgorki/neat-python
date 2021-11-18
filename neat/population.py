@@ -56,7 +56,16 @@ class Population(object):
     def remove_reporter(self, reporter):
         self.reporters.remove(reporter)
 
-    def run(self, fitness_function, n=None, track_best_genome=False):
+    def decide_fitness_slope(self, list_best_genomes_fitness: list, last_N_generations: int, slope_threshold: float) -> bool:
+        lastN_fitness = list_best_genomes_fitness[-(last_N_generations + 1):-1]
+        meanLastN_fitness = sum(lastN_fitness) / len(lastN_fitness)
+        if list_best_genomes_fitness[0] >= (meanLastN_fitness + slope_threshold):
+            return False
+        else:
+            return True
+
+
+    def run(self, fitness_function, n=None, fitness_slope_threshold=False):
         """
         Runs NEAT's genetic algorithm for at most n generations.  If n
         is None, run until solution is found or extinction occurs.
@@ -80,6 +89,8 @@ class Population(object):
             raise RuntimeError("Cannot have no generational limit with no fitness termination")
 
         self.list_best_genome_evolving = []
+        self.list_best_genomes_fitness = []
+
         k = 0
         while n is None or k < n:
             k += 1
@@ -100,6 +111,9 @@ class Population(object):
             if self.best_genome is None or best.fitness > self.best_genome.fitness:
                 self.best_genome = best
                 self.list_best_genome_evolving.append(best)
+                if not fitness_slope_threshold == False:
+                    self.list_best_genomes_fitness.append(best.fitness)
+
 
             if not self.config.no_fitness_termination:
                 # End if the fitness threshold is reached.
@@ -107,6 +121,13 @@ class Population(object):
                 if fv >= self.config.fitness_threshold:
                     self.reporters.found_solution(self.config, self.generation, best)
                     break
+
+            if fitness_slope_threshold:
+                # End if the improvement of best nets fitness is lower than threshold.
+                if (self.generation >= self.config.slope_length) and (self.decide_fitness_slope(self.list_best_genomes_fitness, self.config.slope_length, self.config.slope_threshold) == True):
+                    self.reporters.found_solution(self.config, self.generation, self.best_genome)
+                    break
+
 
             # Create the next generation from the current generation.
             self.population = self.reproduction.reproduce(self.config, self.species,
